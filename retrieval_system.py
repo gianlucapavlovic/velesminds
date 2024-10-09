@@ -3,13 +3,18 @@ import json
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-from openai import OpenAI
+from flask import Flask, request, render_template
+import openai
+from dotenv import load_dotenv
 
-# Initialize OpenAI client
-client = OpenAI()
+# Load environment variables
+load_dotenv()
+
+# Initialize Flask app
+app = Flask(__name__)
 
 # Load and process texts
-def load_texts(folder_path="C:\\Users\\gianl\\OneDrive\\Desktop\\Veles Minds\\texts"):
+def load_texts(folder_path="texts"):
     if not os.path.exists(folder_path):
         raise FileNotFoundError(f"The folder '{folder_path}' does not exist.")
     
@@ -56,15 +61,16 @@ def retrieve_chunks(query, chunks, index, top_k=3):
 # Generate response
 def generate_response(query, context):
     prompt = f"Context: {context}\n\nQuestion: {query}\n\nAnswer:"
-    
-    response = client.chat.completions.create(
+
+    openai.api_key = os.getenv('OPENAI_API_KEY')
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant that answers questions based on the given context."},
+            {"role": "system", "content": "You are Aristotle, providing answers based on the given context."},
             {"role": "user", "content": prompt}
         ]
     )
-    
+
     return response.choices[0].message.content.strip()
 
 # Answer question
@@ -74,32 +80,22 @@ def answer_question(query):
     answer = generate_response(query, context)
     return answer
 
-# Main execution
-if __name__ == "__main__":
-    folder_path = "C:\\Users\\gianl\\OneDrive\\Desktop\\Veles Minds\\texts"
-    
-    # Load texts and create index
-    print("Loading and processing texts...")
-    texts = load_texts(folder_path)
-    chunks = create_chunks(texts)
-    index = create_index(chunks)
-    
-    print("Index created.")
-    
-    # Save index and chunks
-    print("Saving index and chunks...")
-    np.save('index.npy', index)
-    with open('chunks.json', 'w') as f:
-        json.dump(chunks, f)
-    print("Index and chunks saved.")
-    
-    # Interactive Q&A loop
-    print("Welcome to the Aristotle Q&A system. Type 'exit' to quit.")
-    while True:
-        user_query = input("\nWhat question would you like to ask Aristotle? ")
-        if user_query.lower() == 'exit':
-            break
-        answer = answer_question(user_query)
-        print(f"\nAristotle: {answer}")
+# Load texts and create index when the module is imported
+print("Loading and processing texts...")
+texts = load_texts()
+chunks = create_chunks(texts)
+index = create_index(chunks)
+print("Index created.")
 
-    print("Thank you for using the Aristotle Q&A system. Goodbye!")
+# Define a route for the home page
+@app.route('/', methods=['GET', 'POST'])
+def index_route():
+    if request.method == 'POST':
+        query = request.form['query']
+        answer = answer_question(query)
+        return render_template('index.html', query=query, answer=answer)
+    return render_template('index.html')
+
+# For local development
+if __name__ == '__main__':
+    app.run(debug=True)
